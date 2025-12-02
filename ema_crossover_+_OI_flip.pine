@@ -1,0 +1,78 @@
+// ══════════════════════════════════════════════════════════════════════════════
+// INDIKATOR: 15m Trend Reversal [EMA + OI Flip]
+// Zeigt NUR Kauf/Verkauf Signale an (Keine Strategie-Berechnung)
+// ══════════════════════════════════════════════════════════════════════════════
+
+//@version=6
+indicator("15m EMA + OI Flip Signals", overlay=true)
+
+// ══════════════════════════════════════════════════════════════════════════════
+// 1. EINSTELLUNGEN (INPUTS)
+// ══════════════════════════════════════════════════════════════════════════════
+
+// EMA Einstellungen
+grp_ema = "═══ EMA TREND ═══"
+len_fast = input.int(9, "Fast EMA (Signal)", group=grp_ema)
+len_slow = input.int(15, "Slow EMA (Baseline)", group=grp_ema)
+
+// Open Interest Einstellungen
+grp_oi = "═══ OPEN INTEREST FILTER ═══"
+use_oi = input.bool(true, "Benutze OI Filter?", group=grp_oi)
+// Falls du ETH handelst, ändere dies zu BINANCE:ETHUSDTPERP
+sym_oi = input.symbol("BINANCE:BTCUSDTPERP", "Open Interest Symbol", group=grp_oi)
+len_oi_smooth = input.int(20, "OI Durchschnitt (SMA)", group=grp_oi)
+
+// ══════════════════════════════════════════════════════════════════════════════
+// 2. BERECHNUNGEN
+// ══════════════════════════════════════════════════════════════════════════════
+
+// EMAs berechnen
+ema_fast = ta.ema(close, len_fast)
+ema_slow = ta.ema(close, len_slow)
+
+// OI Daten holen (mit Fehlerschutz)
+float raw_oi = request.security(sym_oi, timeframe.period, open, ignore_invalid_symbol=true)
+// Fallback auf Volumen, falls Symbol falsch ist
+float data_src = na(raw_oi) ? volume : raw_oi
+
+// OI Logik: Ist aktuelles OI höher als der Durchschnitt?
+oi_ma = ta.sma(data_src, len_oi_smooth)
+oi_bullish = data_src > oi_ma
+
+// ══════════════════════════════════════════════════════════════════════════════
+// 3. SIGNAL LOGIK
+// ══════════════════════════════════════════════════════════════════════════════
+
+// EMA Crossover (Das eigentliche Signal)
+cross_up = ta.crossover(ema_fast, ema_slow)
+cross_down = ta.crossunder(ema_fast, ema_slow)
+
+// Finale Signale (Nur gültig, wenn OI Filter passt oder deaktiviert ist)
+signal_buy = cross_up and (not use_oi or oi_bullish)
+signal_sell = cross_down and (not use_oi or oi_bullish)
+
+// ══════════════════════════════════════════════════════════════════════════════
+// 4. DARSTELLUNG IM CHART
+// ══════════════════════════════════════════════════════════════════════════════
+
+// EMAs zeichnen
+p1 = plot(ema_fast, "EMA 9", color=color.yellow, linewidth=2)
+p2 = plot(ema_slow, "EMA 15", color=color.blue, linewidth=2)
+fill(p1, p2, color = ema_fast > ema_slow ? color.new(color.green, 85) : color.new(color.red, 85))
+
+// KAUF SIGNAL (Grüner Pfeil + Label "BUY")
+plotshape(signal_buy, title="Buy Signal", style=shape.labelup, location=location.belowbar, color=color.green, text="BUY", textcolor=color.white, size=size.small)
+
+// VERKAUF SIGNAL (Roter Pfeil + Label "SELL")
+plotshape(signal_sell, title="Sell Signal", style=shape.labeldown, location=location.abovebar, color=color.red, text="SELL", textcolor=color.white, size=size.small)
+
+// Hintergrund färben bei Signal für bessere Sichtbarkeit
+bgcolor(signal_buy ? color.new(color.green, 80) : na)
+bgcolor(signal_sell ? color.new(color.red, 80) : na)
+
+// ══════════════════════════════════════════════════════════════════════════════
+// 5. ALARME (FÜR HANDY/APP)
+// ══════════════════════════════════════════════════════════════════════════════
+
+alertcondition(signal_buy, title="LONG Signal", message="EMA Cross UP + OI Valid -> BUY")
+alertcondition(signal_sell, title="SHORT Signal", message="EMA Cross DOWN + OI Valid -> SELL")
